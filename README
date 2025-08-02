@@ -1,46 +1,263 @@
-xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
-Version 6 (v6).  xv6 loosely follows the structure and style of v6,
-but is implemented for a modern RISC-V multiprocessor using ANSI C.
+# xv6 Assignment 1: Prime PID & `top` Command Implementation
 
-ACKNOWLEDGMENTS
+## Overview
 
-xv6 is inspired by John Lions's Commentary on UNIX 6th Edition (Peer
-to Peer Communications; ISBN: 1-57398-013-7; 1st edition (June 14,
-2000)).  See also https://pdos.csail.mit.edu/6.1810/, which provides
-pointers to on-line resources for v6.
+This repository contains code changes for **Lab 1 assignments** on the xv6 operating system:
 
-The following people have made contributions: Russ Cox (context switching,
-locking), Cliff Frey (MP), Xiao Yu (MP), Nickolai Zeldovich, and Austin
-Clements.
+- **Task 1.1:** Assigning **Prime Number PIDs** to all new processes.
+- **Task 1.2:** Implementing a `top` **user-space command** to display process stats.
 
-We are also grateful for the bug reports and patches contributed by
-Takahiro Aoyagi, Marcelo Arroyo, Silas Boyd-Wickizer, Anton Burtsev,
-carlclone, Ian Chen, Dan Cross, Cody Cutler, Mike CAT, Tej Chajed,
-Asami Doi,Wenyang Duan, eyalz800, Nelson Elhage, Saar Ettinger, Alice
-Ferrazzi, Nathaniel Filardo, flespark, Peter Froehlich, Yakir Goaron,
-Shivam Handa, Matt Harvey, Bryan Henry, jaichenhengjie, Jim Huang,
-Matúš Jókay, John Jolly, Alexander Kapshuk, Anders Kaseorg, kehao95,
-Wolfgang Keller, Jungwoo Kim, Jonathan Kimmitt, Eddie Kohler, Vadim
-Kolontsov, Austin Liew, l0stman, Pavan Maddamsetti, Imbar Marinescu,
-Yandong Mao, Matan Shabtay, Hitoshi Mitake, Carmi Merimovich, Mark
-Morrissey, mtasm, Joel Nider, Hayato Ohhashi, OptimisticSide,
-phosphagos, Harry Porter, Greg Price, RayAndrew, Jude Rich, segfault,
-Ayan Shafqat, Eldar Sehayek, Yongming Shen, Fumiya Shigemitsu, snoire,
-Taojie, Cam Tenny, tyfkda, Warren Toomey, Stephen Tu, Alissa Tung,
-Rafael Ubal, Amane Uehara, Pablo Ventura, Xi Wang, WaheedHafez,
-Keiichi Watanabe, Lucas Wolf, Nicolas Wolovick, wxdao, Grant Wu, x653,
-Jindong Zhang, Icenowy Zheng, ZhUyU1997, and Zou Chang Wei.
+---
 
-ERROR REPORTS
+## Task 1.1: Prime PID Assignment
 
-Please send errors and suggestions to Frans Kaashoek and Robert Morris
-(kaashoek,rtm@mit.edu).  The main purpose of xv6 is as a teaching
-operating system for MIT's 6.1810, so we are more interested in
-simplifications and clarifications than new features.
+### Goal
+Assign **prime numbers as PIDs**, starting from 2 upwards sequentially, to all new processes.
 
-BUILDING AND RUNNING XV6
+### Code Changes
 
-You will need a RISC-V "newlib" tool chain from
-https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
-riscv64-softmmu.  Once they are installed, and in your shell
-search path, you can run "make qemu".
+1. **Prime Sieve Initialization**  
+   In `kernel/proc.c`:
+   ```c
+   #define MAXPID 65536
+
+   char is_prime_pid[MAXPID + 1];
+   int prime_pids[MAXPID];
+   int num_primes = 0;
+   static int idx = 0;
+
+   void init_prime_pids(void) {
+       for (int i = 0; i <= MAXPID; i++) is_prime_pid[i] = 1;
+       is_prime_pid[0] = is_prime_pid[1] = 0;
+       for (int i = 2; i * i <= MAXPID; i++) {
+           if (is_prime_pid[i]) {
+               for (int j = i * i; j <= MAXPID; j += i)
+                   is_prime_pid[j] = 0;
+           }
+       }
+       for (int i = 2; i <= MAXPID; i++) {
+           if (is_prime_pid[i])
+               prime_pids[num_primes++] = i;
+       }
+       printf("[kernel] %d total primes.\n", num_primes);
+   }
+   ```
+
+2. **Replace PID Allocator**  
+   Replace the default `allocpid()` with:
+   ```c
+   int allocpid() {
+       int pid;
+       acquire(&pid_lock);
+       if (idx >= num_primes) {
+           panic("Out of prime PIDs!");
+       }
+       pid = prime_pids[idx++];
+       release(&pid_lock);
+       return pid;
+   }
+   ```
+
+3. **Initialization Order in `main.c`**
+   In `kernel/main.c`:
+   ```c
+   extern void init_prime_pids(void);
+
+   void main() {
+       if (cpuid() == 0) {
+           // ...
+           init_prime_pids();  // BEFORE procinit()
+           procinit();
+           // ...
+       }
+       // ...
+   }
+   ```
+
+---
+
+## Task 1.2: Implement `top` Command
+
+### Goal
+Create a `top` user command to show:
+- PID
+- State
+- Accumulated CPU ticks
+- Process name
+
+### Kernel-Side Changes
+
+1. **Track Runtime in `struct proc`** (`kernel/proc.h`)
+   ```c
+   struct proc {
+       // ...
+       uint64 rtime; // CPU ticks
+       // ...
+   };
+   ```
+
+2. **Increment `rtime` on Each Tick** (`kernel/trap.c`)
+   ```c
+   void clockintr() {
+       if (cpuid() == 0) {
+           acquire(&tickslock);
+           ticks++;
+           wakeup(&ticks);
+           release(&tickslock);
+       }
+       struct proc *p = mycpu()->proc;
+       if (p && p->state == RUNNING) {
+           p->rtime++;
+       }
+       w_stimecmp(r_time() + 1000000);
+   }
+   ```
+
+3. **Define `struct proc_info`** (`kernel/proc.h`)
+   ```c
+   struct proc_info {
+       int pid;
+       int state;
+       int ticks;
+       char name[16];
+   };
+
+   int getprocs(struct proc_info *info, int max);
+   ```
+
+4. **Implement `getprocs()`** (`kernel/proc.c`)
+   ```c
+   int getprocs(struct proc_info *info, int max) {
+       struct proc *p;
+       int count = 0;
+       for (p = proc; p < &proc[NPROC] && count < max; p++) {
+           acquire(&p->lock);
+           if (p->state != UNUSED) {
+               info[count].pid = p->pid;
+               info[count].state = p->state;
+               info[count].ticks = p->rtime;
+               safestrcpy(info[count].name, p->name, sizeof(info[count].name));
+               count++;
+           }
+           release(&p->lock);
+       }
+       return count;
+   }
+   ```
+
+5. **Add syscall handler `sys_getprocs()`** (`kernel/sysproc.c`)
+   ```c
+   uint64 sys_getprocs(void) {
+       uint64 u_info;
+       int max;
+       argaddr(0, &u_info);
+       argint(1, &max);
+
+       if (max > NPROC) max = NPROC;
+
+       struct proc_info kbuf[NPROC];
+       int n = getprocs(kbuf, max);
+
+       if (copyout(myproc()->pagetable, u_info, (char *)kbuf, n * sizeof(struct proc_info)) < 0)
+           return -1;
+       return n;
+   }
+   ```
+
+6. **Register syscall**
+   - `kernel/syscall.h`:
+     ```c
+     #define SYS_getprocs 24
+     ```
+   - `kernel/syscall.c`:
+     ```c
+     extern uint64 sys_getprocs(void);
+     [SYS_getprocs] sys_getprocs,
+     ```
+
+---
+
+### User-Side Changes
+
+1. **Create `user/top.c`**
+   ```c
+   #include "kernel/types.h"
+   #include "user/user.h"
+
+   #define MAX_PROC 64
+   #define SYS_getprocs 24
+
+   struct proc_info {
+       int pid;
+       int state;
+       int ticks;
+       char name[16];
+   };
+
+   static char *states[] = {
+       "UNUSED", "USED", "SLEEPING", "RUNNABLE", "RUNNING", "ZOMBIE"
+   };
+
+   int getprocs(struct proc_info *info, int max) {
+       int ret;
+       asm volatile (
+           "li a7, %1\n"
+           "mv a0, %2\n"
+           "mv a1, %3\n"
+           "ecall\n"
+           "mv %0, a0\n"
+           : "=r"(ret)
+           : "i"(SYS_getprocs), "r"(info), "r"(max)
+           : "a0", "a1", "a7"
+       );
+       return ret;
+   }
+
+   int main(void) {
+       struct proc_info pinfo[MAX_PROC];
+       int n = getprocs(pinfo, MAX_PROC);
+
+       printf("%-6s %-10s %-6s %s\n", "PID", "STATE", "TICKS", "NAME");
+       for (int i = 0; i < n; i++) {
+           char *state = (pinfo[i].state >= 0 && pinfo[i].state <= 5) ? states[pinfo[i].state] : "???";
+           printf("%-6d %-10s %-6d %s\n", pinfo[i].pid, state, pinfo[i].ticks, pinfo[i].name);
+       }
+       exit(0);
+   }
+   ```
+
+2. **Add to `Makefile`**
+   In `Makefile`, add `_top` to `UPROGS`:
+   ```make
+   UPROGS=\
+       ...
+       $U/_top\
+   ```
+
+---
+
+## Build & Run Instructions
+
+```sh
+make clean
+make
+make qemu-nox
+```
+
+Inside the xv6 shell:
+```sh
+top
+```
+
+You’ll see output with **prime PIDs**, process state, runtime ticks, and names.
+
+---
+
+## Summary Table
+
+| Task  | Files                                                                 | Description                                  |
+|-------|------------------------------------------------------------------------|----------------------------------------------|
+| 1.1   | `proc.c`, `proc.h`, `main.c`                                          | Prime sieve, prime PID assignment, init      |
+| 1.2   | `proc.h`, `proc.c`, `sysproc.c`, `syscall.c`, `syscall.h`, `user/top.c`, `Makefile` | Tick tracking, syscall, `top` user command |
+
+---
