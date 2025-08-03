@@ -149,6 +149,7 @@ allocpid()
         panic("Out of prime PIDs!");
     }
     pid = prime_pids[idx++];
+    printf("Allocated PID : %d\n",pid);
     release(&pid_lock);
     return pid;
 }
