@@ -2,6 +2,7 @@
 #include "user/user.h"
 
 
+
 struct proc_info {
     int pid;
     int state;
@@ -32,13 +33,18 @@ int getprocs(struct proc_info *info, int max) {
 static char* states[] = {"UNUSED", "USED", "SLEEPING", "RUNNABLE", "RUNNING", "ZOMBIE"};
 
 int main(void) {
+    
+    
+    while (1) {
     struct proc_info pinfo[MAX_PROC];
     int n = getprocs(pinfo, MAX_PROC);
-    
     printf("PID\tSTATE\t\tTICKS\tNAME\n");
-    for(int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {
         char *state = (pinfo[i].state >= 0 && pinfo[i].state <= 5) ? states[pinfo[i].state] : "???";
         printf("%d\t%s\t%d\t%s\n", pinfo[i].pid, state, pinfo[i].ticks, pinfo[i].name);
+    }
+    sleep(20);                  // sleep for 200 ticks (~2 seconds)
+    printf("\033[2J\033[H");   // clear screen and move cursor home
     }
     exit(0);
 }
