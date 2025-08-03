@@ -34,7 +34,7 @@ static char* states[] = {"UNUSED", "USED", "SLEEPING", "RUNNABLE", "RUNNING", "Z
 int main(void) {
     struct proc_info pinfo[MAX_PROC];
     int n = getprocs(pinfo, MAX_PROC);
-
+    
     printf("PID\tSTATE\t\tTICKS\tNAME\n");
     for(int i = 0; i < n; i++) {
         char *state = (pinfo[i].state >= 0 && pinfo[i].state <= 5) ? states[pinfo[i].state] : "???";
