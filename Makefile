@@ -144,7 +144,8 @@ UPROGS=\
 	$U/_zombie\
 	$U/_top\
 	$U/_exit\
-	$U/_infinite\
+	$U/_loop\
+
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
