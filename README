@@ -261,3 +261,28 @@ You’ll see output with **prime PIDs**, process state, runtime ticks, and names
 | 1.2   | `proc.h`, `proc.c`, `sysproc.c`, `syscall.c`, `syscall.h`, `user/top.c`, `Makefile` | Tick tracking, syscall, `top` user command |
 
 ---
+
+
+## additional syscall  related
+
+// ===== user/usys.pl =====
+
+// Add this syscall line to the syscall list inside the Perl script:
+entry("getprocs");
+
+// ===== user/user.h =====
+
+struct proc_info;
+
+int getprocs(struct proc_info *info, int max);
+
+// ===== user/usys.S =====
+
+// This is generated automatically by usys.pl,
+// but for clarity, add this stub to the generated usys.S:
+.global getprocs
+getprocs:
+  li a7, SYS_getprocs
+  ecall
+  ret
+
