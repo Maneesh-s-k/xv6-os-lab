@@ -172,12 +172,11 @@ clockintr()
 
 
   //-------------------------runtime ticks for currently running process----------------------
-  for(int i=0;i<NCPU;i++){
-  struct proc *p =cpus[i].proc;
+    struct proc *p =mycpu()->proc;
   if(p != 0 && p->state == RUNNING){
     p->rtime++;  // Increment run time tick count
   } 
-  }
+  
   //-------------------------------------------------------------------------------------------
 
 
