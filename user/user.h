@@ -1,5 +1,11 @@
 struct stat;
-
+struct proc_info {
+    int pid;
+    int state;
+    int ticks;
+    char name[16];
+};
+#define SYS_getprocs 22
 // system calls
 int fork(void);
 int exit(int) __attribute__((noreturn));
@@ -41,3 +47,5 @@ void *memcpy(void *, const void *, uint);
 // umalloc.c
 void* malloc(uint);
 void free(void*);
+
+int getprocs(struct proc_info*, int);
