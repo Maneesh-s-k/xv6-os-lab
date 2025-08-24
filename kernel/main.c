@@ -3,10 +3,16 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "defs.h"
+#include "shm.h"
 
 volatile static int started = 0;
 
 // start() jumps here in supervisor mode on all CPUs.
+
+
+
+extern void shm_init(void);
+
 void
 main()
 {
@@ -20,6 +26,7 @@ main()
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
     procinit();      // process table
+          shm_init();   //-----------------initialize shared memory system----------
     trapinit();      // trap vectors
     trapinithart();  // install kernel trap vector
     plicinit();      // set up interrupt controller

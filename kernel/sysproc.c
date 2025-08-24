@@ -5,6 +5,11 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+//-----------------------------------------
+#include "sem.h"
+#include "shm.h"
+//-----------------------------------------
+
 
 uint64
 sys_exit(void)
@@ -98,3 +103,50 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+
+/*------------------------------------------------------------------------------
+we make system call handlers for sem_init,sem_up,sem_down and shm_get
+--------------------------------------------------------------------------------*/
+
+// sys_sem_init : syscall handler for sem_init(int sem_id, int val)
+uint64
+sys_sem_init(void)
+{
+  int sem_id,val;
+  argint(0, &sem_id);
+  argint(1, &val);
+  return sem_init(sem_id,val);
+}
+
+// argint(n, &var) extracts the nth arg into the variable sem_id, here 0th(first).
+
+// sys_sem_down : syscall handler for sem_down(int sem_id,int val)
+uint64
+sys_sem_down(void){
+  int sem_id;
+  argint(0, &sem_id);
+  return sem_down(sem_id);
+}
+
+
+// sys_sem_up : syscall handler for sem_up(int sem_id,int val)
+uint64
+sys_sem_up(void){
+  int sem_id;
+  argint(0, &sem_id);
+  return sem_up(sem_id);
+}
+
+// sys_shm_get : syscall handler for shm_get(struct proc* p,key)
+uint64
+sys_shm_get(void)
+{
+  int key;
+  struct proc *p=myproc();
+  argint(0, &key);  //key is ignored internally but required by interface
+  void *shared_addr=shm_get(p, key);
+  return (uint64)shared_addr;
+}
+
+
