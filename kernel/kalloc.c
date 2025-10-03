@@ -23,12 +23,36 @@ struct {
   struct run *freelist;
 } kmem;
 
+//------------------------------------------------------
+#define MAXPAGES (PHYSTOP / PGSIZE)
+
+int refcount[MAXPAGES];
+struct spinlock refcount_lock;
+
+static inline int pa2pageindex(uint64 pa);
+void incref(void *pa);
+void decref(void *pa);
+int getref(void *pa);
+
+//------------------------------------------------------
+
+
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  
+  //------------------------------------------------------
+  initlock(&refcount_lock, "refcount");
+  for(int i=0; i<MAXPAGES; i++){
+    refcount[i] = 1;
+  }
+  //------------------------------------------------------
+
   freerange(end, (void*)PHYSTOP);
 }
+
 
 void
 freerange(void *pa_start, void *pa_end)
@@ -46,14 +70,21 @@ freerange(void *pa_start, void *pa_end)
 void
 kfree(void *pa)
 {
+  
   struct run *r;
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  // Decrement reference count
+  decref(pa);
+  if(getref(pa) > 0){
+    // Page is still being used by someone else
+    return;
+  }
 
+  // safe to free now since nobody is using it
+  memset(pa, 1, PGSIZE); // Fill with junk to catch dangling refs.
   r = (struct run*)pa;
 
   acquire(&kmem.lock);
@@ -76,7 +107,48 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r){
     memset((char*)r, 5, PGSIZE); // fill with junk
+    //------------------------------------------------------
+    incref((void*)r); // initialize ref count to 1
+    //------------------------------------------------------
+  }
   return (void*)r;
 }
+
+//------------------------------------------------------
+// functions to change refcount
+
+static inline int pa2pageindex(uint64 pa) {
+  int idx = pa >> PGSHIFT;
+  if(idx < 0 || idx >= MAXPAGES)
+    panic("pa2pageindex: out of range");
+  return idx;
+}
+
+void incref(void *pa) {
+  acquire(&refcount_lock);
+  int idx = pa2pageindex((uint64)pa);
+  refcount[idx]++;
+  release(&refcount_lock);
+}
+
+void decref(void *pa) {
+  acquire(&refcount_lock);
+  int idx = pa2pageindex((uint64)pa);
+  if(refcount[idx]<0){
+    panic("decref: refcount underflow");
+  }
+  refcount[idx]--;
+  release(&refcount_lock);
+}
+
+int getref(void *pa) {
+  acquire(&refcount_lock);
+  int idx=pa2pageindex((uint64)pa);
+  int rc = refcount[idx];
+  release(&refcount_lock);
+  return rc;
+}
+
+//------------------------------------------------------
